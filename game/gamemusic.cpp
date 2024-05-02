@@ -5,18 +5,20 @@
 #include <Tempest/Log>
 
 #include "game/definitions/musicdefinitions.h"
-#include "dmusic/mixer.h"
 #include "resources.h"
+
+#include "dmusic.h"
 
 using namespace Tempest;
 
 struct GameMusic::MusicProducer : Tempest::SoundProducer {
   MusicProducer():SoundProducer(44100,2){
+    DmPerformance_create(&mix, 44100);
     }
 
   void renderSound(int16_t* out,size_t n) override {
     updateTheme();
-    mix.mix(out,n);
+    DmPerformance_renderPcm(mix, out, n * 2, (DmRenderOptions) (DmRender_SHORT | DmRender_STEREO));
     }
 
   void updateTheme() {
@@ -42,32 +44,53 @@ struct GameMusic::MusicProducer : Tempest::SoundProducer {
 
     try {
       if(reloadTheme) {
-        Dx8::PatternList p = Resources::loadDxMusic(theme.file);
+        DmSegment* p = Resources::loadDxMusic(theme.file);
 
-        Dx8::Music m;
-        m.addPattern(p);
+        DmEmbellishmentType embellishment = DmEmbellishment_NONE;
+        switch(theme.transtype) {
+        case zenkit::MusicTransitionEffect::UNKNOWN:
+        case zenkit::MusicTransitionEffect::NONE:
+            embellishment = DmEmbellishment_NONE;
+            break;
+        case zenkit::MusicTransitionEffect::GROOVE:
+            embellishment = DmEmbellishment_GROOVE;
+            break;
+        case zenkit::MusicTransitionEffect::FILL:
+            embellishment = DmEmbellishment_FILL;
+            break;
+        case zenkit::MusicTransitionEffect::BREAK:
+            embellishment = DmEmbellishment_BREAK;
+            break;
+        case zenkit::MusicTransitionEffect::INTRO:
+            embellishment = DmEmbellishment_INTRO;
+            break;
+        case zenkit::MusicTransitionEffect::END:
+            embellishment = DmEmbellishment_END;
+            break;
+        case zenkit::MusicTransitionEffect::END_AND_INTO:
+            embellishment = DmEmbellishment_END_AND_INTRO;
+            break;
+        }
 
-        const int cur  = currentTags&(Tags::Std|Tags::Fgt|Tags::Thr);
-        const int next = tags&(Tags::Std|Tags::Fgt|Tags::Thr);
+        DmTiming timing = DmTiming_MEASURE;
+        switch (theme.transsubtype) {
+        case zenkit::MusicTransitionType::UNKNOWN:
+        case zenkit::MusicTransitionType::MEASURE:
+            timing = DmTiming_MEASURE;
+            break;
+        case zenkit::MusicTransitionType::IMMEDIATE:
+            timing = DmTiming_INSTANT;
+            break;
+        case zenkit::MusicTransitionType::BEAT:
+            timing = DmTiming_BEAT;
+            break;
+        }
 
-        Dx8::DMUS_EMBELLISHT_TYPES em = Dx8::DMUS_EMBELLISHT_END;
-        if(next==Tags::Std) {
-          if(cur!=Tags::Std)
-            em = Dx8::DMUS_EMBELLISHT_BREAK;
-          } else
-        if(next==Tags::Fgt){
-          if(cur==Tags::Thr)
-            em = Dx8::DMUS_EMBELLISHT_FILL;
-          } else
-        if(next==Tags::Thr){
-          if(cur==Tags::Fgt)
-            em = Dx8::DMUS_EMBELLISHT_NORMAL;
-          }
-
-        mix.setMusic(m,em);
+        DmPerformance_playTransition(mix, p, embellishment, timing);
+        DmSegment_release(p);
         currentTags=tags;
         }
-      mix.setMusicVolume(theme.vol);
+      DmPerformance_setVolume(mix, theme.vol);
       }
     catch(std::runtime_error&) {
       Log::e("unable to load sound: \"",theme.file,"\"");
@@ -98,18 +121,18 @@ struct GameMusic::MusicProducer : Tempest::SoundProducer {
   void stopMusic() {
     enable.store(false);
     std::lock_guard<std::mutex> guard(pendingSync);
-    mix.setMusic(Dx8::Music());
+    DmPerformance_playSegment(mix, NULL, DmTiming_MEASURE);
     }
 
   void setVolume(float v) {
-    mix.setVolume(v);
+    DmPerformance_setVolume(mix, v);
     }
 
   bool isEnabled() const {
     return enable.load();
     }
 
-  Dx8::Mixer           mix;
+  DmPerformance*       mix;
 
   std::mutex           pendingSync;
   std::atomic_bool     enable{true};

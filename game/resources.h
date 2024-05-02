@@ -14,6 +14,7 @@
 
 #include "graphics/material.h"
 #include "sound/soundfx.h"
+#include "dmusic.h"
 
 class StaticMesh;
 class ProtoMesh;
@@ -23,11 +24,6 @@ class AttachBinder;
 class PhysicMeshShape;
 class PfxEmitterMesh;
 class GthFont;
-
-namespace Dx8 {
-class DirectMusic;
-class PatternList;
-}
 
 class Resources final {
   public:
@@ -105,7 +101,7 @@ class Resources final {
     static const Animation*          loadAnimation  (std::string_view name);
     static Tempest::Sound            loadSoundBuffer(std::string_view name);
 
-    static Dx8::PatternList          loadDxMusic(std::string_view name);
+    static DmSegment*                loadDxMusic(std::string_view name);
     static const ProtoMesh*          decalMesh(const zenkit::VirtualObject& vob);
 
     static const VobTree*            loadVobBundle(std::string_view name);
@@ -177,7 +173,7 @@ class Resources final {
     std::unique_ptr<Animation> implLoadAnimation(std::string name);
     ProtoMesh*            implDecalMesh(const zenkit::VirtualObject& vob);
     Tempest::Sound        implLoadSoundBuffer(std::string_view name);
-    Dx8::PatternList      implLoadDxMusic(std::string_view name);
+    DmSegment*            implLoadDxMusic(std::string_view name);
     GthFont&              implLoadFont(std::string_view fname, FontType type);
     PfxEmitterMesh*       implLoadEmiterMesh(std::string_view name);
     const VobTree*        implLoadVobBundle(std::string_view name);
@@ -214,8 +210,8 @@ class Resources final {
     Tempest::SoundDevice              sound;
 
     std::recursive_mutex              sync;
-    std::unique_ptr<Dx8::DirectMusic> dxMusic;
     zenkit::Vfs                       gothicAssets;
+    DmLoader*                         dmLoader;
 
     std::vector<uint8_t>              fBuff, ddsBuf;
     Tempest::VertexBuffer<VertexFsq>  fsq;

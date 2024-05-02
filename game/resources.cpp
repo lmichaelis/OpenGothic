@@ -27,12 +27,12 @@
 #include "graphics/mesh/animation.h"
 #include "graphics/mesh/attachbinder.h"
 #include "graphics/material.h"
-#include "dmusic/directmusic.h"
 #include "utils/fileext.h"
 #include "utils/gthfont.h"
 
 #include "gothic.h"
 #include "utils/string_frm.h"
+#include "utils/fileutil.h"
 
 using namespace Tempest;
 
@@ -61,17 +61,29 @@ Resources::Resources(Tempest::Device &device)
   fsq = Resources::vbo(fsqBuf.data(),fsqBuf.size());
 
   //sp = sphere(3,1.f);
+  DmLoader_create(&dmLoader, DmLoader_DOWNLOAD);
 
-  dxMusic.reset(new Dx8::DirectMusic());
-  // G2
-  dxMusic->addPath(Gothic::nestedPath({u"_work",u"Data",u"Music",u"newworld"},  Dir::FT_Dir));
-  dxMusic->addPath(Gothic::nestedPath({u"_work",u"Data",u"Music",u"AddonWorld"},Dir::FT_Dir));
-  // G1
-  dxMusic->addPath(Gothic::nestedPath({u"_work",u"Data",u"Music",u"dungeon"},  Dir::FT_Dir));
-  dxMusic->addPath(Gothic::nestedPath({u"_work",u"Data",u"Music",u"menu_men"}, Dir::FT_Dir));
-  dxMusic->addPath(Gothic::nestedPath({u"_work",u"Data",u"Music",u"orchestra"},Dir::FT_Dir));
-  // switch-build
-  dxMusic->addPath(Gothic::nestedPath({u"_work",u"Data",u"Music"},Dir::FT_Dir));
+  gothicAssets.mkdir("/_work/data/music");
+  gothicAssets.mount_host(Gothic::nestedPath({u"_work",u"Data",u"Music"}, Dir::FT_Dir), "/_work/data/music", zenkit::VfsOverwriteBehavior::ALL);
+  DmLoader_addResolver(dmLoader, [](void* ctx, char const* name, size_t* len) -> void* {
+      auto* slf = reinterpret_cast<Resources*>(ctx);
+      auto* node = slf->gothicAssets.find(name);
+
+      if (node == nullptr) {
+          return nullptr;
+      }
+
+      auto reader = node->open_read();
+
+      reader->seek(0, zenkit::Whence::END);
+      *len = reader->tell();
+
+      reader->seek(0, zenkit::Whence::BEG);
+      auto* bytes = static_cast<uint8_t *>(malloc(*len));
+      reader->read(bytes, *len);
+
+      return bytes;
+  }, this);
 
   fBuff .reserve(8*1024*1024);
   ddsBuf.reserve(8*1024*1024);
@@ -608,9 +620,10 @@ std::unique_ptr<Animation> Resources::implLoadAnimation(std::string name) {
   return nullptr;
   }
 
-Dx8::PatternList Resources::implLoadDxMusic(std::string_view name) {
-  auto u = Tempest::TextCodec::toUtf16(std::string(name));
-  return dxMusic->load(u.c_str());
+DmSegment* Resources::implLoadDxMusic(std::string_view name) {
+  DmSegment* sgt = NULL;
+  DmLoader_getSegment(dmLoader, name.data(), &sgt);
+  return sgt;
   }
 
 Tempest::Sound Resources::implLoadSoundBuffer(std::string_view name) {
@@ -828,7 +841,7 @@ Tempest::Sound Resources::loadSoundBuffer(std::string_view name) {
   return inst->implLoadSoundBuffer(name);
   }
 
-Dx8::PatternList Resources::loadDxMusic(std::string_view name) {
+DmSegment* Resources::loadDxMusic(std::string_view name) {
   std::lock_guard<std::recursive_mutex> g(inst->sync);
   return inst->implLoadDxMusic(name);
   }
