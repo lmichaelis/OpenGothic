@@ -90,7 +90,7 @@ struct GameMusic::MusicProducer : Tempest::SoundProducer {
         DmSegment_release(p);
         currentTags=tags;
         }
-      DmPerformance_setVolume(mix, theme.vol);
+      DmPerformance_setVolume(mix, theme.vol * Gothic::settingsGetF("SOUND","musicVolume"));
       }
     catch(std::runtime_error&) {
       Log::e("unable to load sound: \"",theme.file,"\"");
